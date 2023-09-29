@@ -1,0 +1,5 @@
+Starting >>> sir
+Finished <<< sir [1.36s]
+
+Summary: 1 package finished [1.71s]
+  1 package had stderr output: sir

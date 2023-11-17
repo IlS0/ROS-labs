@@ -7,7 +7,10 @@ from rclpy.node import Node
 from action_turtle_interface.action import MessageTurtleCommands
 from geometry_msgs.msg import Twist
 
+from turtlesim.msg import Pose
+from rclpy.executors import MultiThreadedExecutor
 
+from math import sqrt
 import numpy as np
 
 class TurtleActionServer(Node):
@@ -24,6 +27,20 @@ class TurtleActionServer(Node):
         self.publisher = self.create_publisher(Twist, '/turtle1/cmd_vel', 10)
         self.odom = 0
 
+        self.pose_sub = self.create_subscription(Pose, '/turtle1/pose', self.set_pose_callback, 10)
+        self.current_pose = Pose()
+        self.last_pose = Pose()
+
+
+    def set_pose_callback(self, pose):
+        self.current_pose = pose
+
+    def odom_publish_feedback(self):
+        feedback_msg = MessageTurtleCommands.Feedback()
+        feedback_msg.odom = self.calc_distance(self.last_pose, self.current_pose)
+        self.goal_handle.publish_feedback(feedback_msg)
+
+
     def execute_callback(self, goal_handle):
         self.get_logger().info('Executing goal...')
 
@@ -36,18 +53,8 @@ class TurtleActionServer(Node):
         
         if command == 'forward':
             self.get_logger().info(f'Goal: {command}, {s} metres.')
-            
-            for _ in range(s):
-                tw.linear.x += 1.0
-                self.publisher.publish(tw)
-
-                self.odom += 1
-                feedback_msg.odom = self.odom
-
-                self.get_logger().info(f'Feedback: odom {feedback_msg.odom} metres')
-                goal_handle.publish_feedback(feedback_msg)
-
-                time.sleep(1)
+            tw.linear.x = s
+            self.publisher.publish(tw)
                 
         elif command == 'turn_left':
             self.get_logger().info(f'Goal: {command}, {angle} degrees.')
@@ -55,9 +62,9 @@ class TurtleActionServer(Node):
             tw.angular.z = angle * np.pi / 180
             self.publisher.publish(tw)
 
-            self.get_logger().info(f'Feedback: odom {feedback_msg.odom} metres')
-            goal_handle.publish_feedback(feedback_msg)
-            time.sleep(1)
+            #self.get_logger().info(f'Feedback: odom {feedback_msg.odom} metres')
+            #goal_handle.publish_feedback(feedback_msg)
+            #time.sleep(1)
 
         elif command == 'turn_right':
             self.get_logger().info(f'Goal: {command}, {angle} degrees.')
@@ -65,14 +72,25 @@ class TurtleActionServer(Node):
             tw.angular.z = -1 * angle * np.pi / 180
             self.publisher.publish(tw)
 
-            self.get_logger().info(f'Feedback: odom {feedback_msg.odom} metres')
-            goal_handle.publish_feedback(feedback_msg)
-            time.sleep(1)
+            #self.get_logger().info(f'Feedback: odom {feedback_msg.odom} metres')
+            #goal_handle.publish_feedback(feedback_msg)
+            #time.sleep(1)
 
         else:
             self.get_logger().error(f'Invalid command received: {command}')
             raise ValueError('Invalid command :(')
         
+        while not self.current_pose.linear_velocity or self.current_pose.angular_velocity:
+            pass
+        
+        self.last_pose = self.current_pose
+        self.goal_handle = goal_handle
+        feedback_timer = self.create_timer(0.5, self.odom_publish_feedback)
+
+        while self.current_pose.linear_velocity or self.current_pose.angular_velocity:
+            pass
+
+        feedback_timer.cancel()
         self.get_logger().info('Goal reached :)')
 
 
@@ -81,6 +99,10 @@ class TurtleActionServer(Node):
         result = MessageTurtleCommands.Result()
         result.result = True
         return result
+    
+
+    def calc_distance(fst_pose, snd_pose):
+        return sqrt((fst_pose.x - snd_pose.x)**2 + (fst_pose.y - snd_pose.y)**2) 
 
 
 def main(args=None):
@@ -88,7 +110,11 @@ def main(args=None):
 
     action_turtle_server = TurtleActionServer()
 
-    rclpy.spin(action_turtle_server)
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(action_turtle_server)
+    executor.spin()
+
+    #rclpy.spin(action_turtle_server)
 
     action_turtle_server.destroy_node()
     rclpy.shutdown()

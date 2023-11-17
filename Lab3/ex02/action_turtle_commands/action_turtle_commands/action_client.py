@@ -18,7 +18,6 @@ class TurtleActionClient(Node):
     def send_goal(self, order):
         goal_msg = MessageTurtleCommands.Goal()
 
-
         for cmd,val in order:
             goal_msg.command  = cmd
 
@@ -55,7 +54,7 @@ class TurtleActionClient(Node):
 
     def get_feedback_callback(self, feedback_msg):
         feedback = feedback_msg.feedback
-        self.get_logger().info(f'Distance: {feedback}')
+        self.get_logger().info(f'Distance: {feedback.odom:4.f}')
 
 
 def main(args=None):
